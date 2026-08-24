@@ -7,7 +7,7 @@
 [![Live Demo](https://img.shields.io/badge/🚀%20Live%20Demo-screen--ai.streamlit.app-06b6d4?style=for-the-badge)](https://screen-ai.streamlit.app)
 [![Python](https://img.shields.io/badge/Python-3.11-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.35-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)](https://streamlit.io)
-[![Groq](https://img.shields.io/badge/Groq-Llama%203.3%2070B-f97316?style=for-the-badge)](https://groq.com)
+[![Groq](https://img.shields.io/badge/Groq-gpt--oss%20%2B%20Whisper-f97316?style=for-the-badge)](https://groq.com)
 
 **AI-Powered Resume Screening & Live Voice Interview Platform**
 *Works for ANY job — Web Dev, Data Entry, Design, Medical, Finance, Engineering & more*
@@ -57,7 +57,8 @@
 
 ```
 Frontend    →  Streamlit (Python)
-LLM         →  Groq API — Llama 3.3 70B (ultra-fast inference)
+LLM         →  Groq API — gpt-oss (ultra-fast JSON-mode inference)
+Speech→Text →  Groq Whisper (whisper-large-v3-turbo)
 TTS         →  gTTS — Google Text-to-Speech
 PDF Parser  →  PyPDF2
 Videos      →  YouTube Data API v3
@@ -137,11 +138,18 @@ streamlit run app.py
 
 ```
 Screen.Ai/
-├── app.py                  # Main Streamlit app
+├── app.py                  # Main Streamlit app (UI + flow)
 ├── requirements.txt        # Dependencies
+├── .env.example            # Template for your API keys
+├── .streamlit/
+│   └── config.toml         # Theme configuration
 ├── modules/
 │   ├── __init__.py
-│   └── groq_analyzer.py    # AI engine (analysis + interview)
+│   ├── config.py           # Central config & secret loading
+│   ├── groq_client.py      # Groq REST client (chat + Whisper)
+│   ├── groq_analyzer.py    # CV vs JD analysis engine
+│   ├── interview.py        # Question gen, transcription, scoring
+│   └── youtube.py          # Learning-video lookup
 └── README.md
 ```
 
