@@ -33,8 +33,23 @@ def get_learning_videos(skills, max_skills=6):
             continue
 
         if data.get("error"):
-            # Quota exhausted or bad key — stop trying, fail silently.
-            break
+            # [BUG FIX] Previously this was `break`, which aborted the
+            # ENTIRE loop on the first error — so if skill #1's search
+            # hiccuped, skills #2-6 never got looked up at all, even though
+            # their own requests would likely have succeeded. Now we only
+            # hard-stop for errors that won't get better on the next call
+            # (quota exhausted / bad key / permission denied); anything else
+            # just skips this one skill and keeps going.
+            err = data["error"] or {}
+            reasons = {
+                e.get("reason", "") for e in (err.get("errors") or [])
+            }
+            fatal = bool(
+                reasons & {"quotaExceeded", "dailyLimitExceeded", "keyInvalid", "forbidden"}
+            ) or err.get("code") in (401, 403)
+            if fatal:
+                break
+            continue
 
         items = data.get("items") or []
         if not items:

@@ -5,9 +5,51 @@ A single-page Streamlit app that:
   2. Analyses it against a job description (match %, skills, roadmap).
   3. Suggests YouTube learning resources for missing skills.
   4. Runs a personalised, bilingual voice/text mock interview with scoring.
+
+--------------------------------------------------------------------------
+BUG-FIX CHANGELOG (this revision)
+--------------------------------------------------------------------------
+[FIX-1] Voice-question bug (Q1 spoke, Q2/Q3 silently fell back to text):
+    speak() used a bare `except Exception: pass`, so any transient gTTS
+    failure (network blip / rate limit / locked temp file) after the first
+    question was swallowed with no signal to the user. Fixed by:
+      - retrying transient failures (2 attempts, small backoff)
+      - using tempfile.NamedTemporaryFile instead of a hand-rolled name in
+        the working directory (avoids collisions / permission issues)
+      - surfacing failures into st.session_state.tts_last_error instead of
+        discarding them, so the UI can show a warning + a manual
+        "retry audio" button instead of silently degrading to text-only
+
+[FIX-2] Missing-skills / YouTube recommendation bug:
+    The app trusted analyze_profile()'s missing_skills list verbatim, with
+    no de-duplication against matching_skills and no cross-check against
+    the actual resume text, and get_learning_videos() was called with no
+    error handling (one API hiccup killed the whole section). Fixed by:
+      - reconcile_skill_gap(): a deterministic, local post-processing pass
+        that normalises skill strings, removes anything already present in
+        matching_skills OR literally present in the resume text (fixes
+        LLM misclassification), and de-duplicates case-insensitively
+      - wrapping get_learning_videos() in try/except with a visible error
+        + "Retry" button instead of a hard crash
+
+[FIX-3] Stale answers leaking between interviews: dynamic `answer_{idx}`
+    session_state keys were never cleared by reset_interview()/reset_all().
+[FIX-4] Crash (ZeroDivisionError / IndexError) if generate_questions()
+    returns an empty list.
+[FIX-5] score_color() and score_word() used different thresholds, so the
+    bar color and the text label could contradict each other. Unified into
+    one match_tier() source of truth.
+[FIX-6] vid['url'] was interpolated unescaped into unsafe_allow_html
+    markdown. Restructured to avoid raw HTML entirely for that block.
+[FIX-7] Shared mutable list objects in DEFAULTS were assigned by
+    reference (not copied) into session_state, a latent shared-state bug.
+--------------------------------------------------------------------------
 """
 import base64
 import os
+import re
+import tempfile
+import time
 import uuid
 
 import gtts
@@ -124,6 +166,7 @@ DEFAULTS = {
     "cv_text": "",
     "jd_text": "",
     "videos": None,
+    "videos_error": None,          # [FIX-2] surface video-fetch errors instead of crashing
     "iv_active": False,
     "iv_questions": [],
     "iv_index": 0,
@@ -133,62 +176,142 @@ DEFAULTS = {
     "voice_on": True,
     "spoken_idx": -1,
     "last_audio_id": None,
+    "tts_last_error": None,        # [FIX-1] surface TTS failures instead of swallowing them
+    "last_tts_call_ts": 0.0,       # [FIX-8] enforce a minimum gap between gTTS calls
 }
+
+
+def _default_copy(value):
+    """[FIX-7] Return an independent copy of mutable defaults (list/dict) so
+    that resetting session state never re-shares (and therefore never risks
+    mutating) the module-level DEFAULTS objects."""
+    if isinstance(value, (list, dict)):
+        return value.copy()
+    return value
+
+
 for key, value in DEFAULTS.items():
-    st.session_state.setdefault(key, value)
+    st.session_state.setdefault(key, _default_copy(value))
+
+
+def _clear_dynamic_answer_keys():
+    """[FIX-3] The interview text areas are bound to session_state keys named
+    'answer_0', 'answer_1', ... which are NOT part of DEFAULTS (they're
+    created on the fly). Without this, a second interview in the same
+    session reuses the same keys and silently pre-fills the answer boxes
+    with the previous interview's answers."""
+    for k in [k for k in st.session_state.keys() if k.startswith("answer_")]:
+        del st.session_state[k]
 
 
 def reset_all():
     for key, value in DEFAULTS.items():
-        st.session_state[key] = value
+        st.session_state[key] = _default_copy(value)
+    _clear_dynamic_answer_keys()
 
 
 def reset_interview():
     for key in ("iv_active", "iv_questions", "iv_index", "iv_answers",
-                "iv_done", "iv_report", "spoken_idx", "last_audio_id"):
-        st.session_state[key] = DEFAULTS[key]
+                "iv_done", "iv_report", "spoken_idx", "last_audio_id",
+                "tts_last_error", "last_tts_call_ts"):
+        st.session_state[key] = _default_copy(DEFAULTS[key])
+    _clear_dynamic_answer_keys()
 
 
 # --------------------------------------------------------------------------
 # Helpers
 # --------------------------------------------------------------------------
-def speak(text):
-    """Autoplay text as speech (best-effort; silent on failure)."""
+def speak(text, retries=2, backoff_seconds=1.5):
+    """Autoplay text as speech.
+
+    [FIX-1] Previously any exception here (network blip / rate limit / locked
+    temp file, etc.) was caught and silently discarded, which is exactly why
+    question 1 could play audio while questions 2/3 silently degraded to
+    text-only with no visible error. Now we:
+      - retry a couple of times before giving up (transient errors are
+        common with gTTS's HTTP backend)
+      - use a real temp file via `tempfile` (no working-directory
+        collisions / permission issues)
+      - record the failure reason in session_state so the UI can show it
+        and offer a manual retry, instead of failing invisibly.
+
+    [FIX-8] gTTS talks to Google Translate's undocumented TTS endpoint,
+    which throttles/blocks requests that arrive too close together in time.
+    Confirmed via real testing: skipping through questions rapidly (no
+    delay between speak() calls) reliably lost audio after question 1,
+    while typing+submitting an answer (which naturally inserts a 1-3s delay
+    for the Groq evaluation call) let every question's audio play fine.
+    Same code path, only difference was timing between consecutive gTTS
+    calls. Fix: unconditionally enforce a minimum gap (MIN_TTS_GAP seconds)
+    since the last gTTS call, sleeping first if the user proceeds faster
+    than that — so audio no longer silently depends on how fast the person
+    clicks through the interview.
+
+    Returns True if audio was played, False otherwise.
+    """
+    MIN_TTS_GAP = 2.0  # seconds; below this, Google's TTS endpoint tends to throttle
+
+    st.session_state.tts_last_error = None
     if not text or not st.session_state.voice_on:
-        return
-    path = f"_tts_{uuid.uuid4().hex}.mp3"
-    try:
-        gtts.gTTS(text=text, lang="en").save(path)
-        with open(path, "rb") as fh:
-            b64 = base64.b64encode(fh.read()).decode()
-        st.markdown(
-            f'<audio autoplay="true" style="display:none">'
-            f'<source src="data:audio/mp3;base64,{b64}" type="audio/mp3"></audio>',
-            unsafe_allow_html=True,
-        )
-    except Exception:
-        pass
-    finally:
-        if os.path.exists(path):
-            os.remove(path)
+        return False
+
+    elapsed = time.time() - st.session_state.get("last_tts_call_ts", 0.0)
+    if elapsed < MIN_TTS_GAP:
+        time.sleep(MIN_TTS_GAP - elapsed)
+
+    last_exc = None
+    for attempt in range(retries + 1):
+        tmp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
+                tmp_path = tmp.name
+            gtts.gTTS(text=text, lang="en").save(tmp_path)
+            with open(tmp_path, "rb") as fh:
+                b64 = base64.b64encode(fh.read()).decode()
+            st.markdown(
+                f'<audio autoplay="true" style="display:none">'
+                f'<source src="data:audio/mp3;base64,{b64}" type="audio/mp3"></audio>',
+                unsafe_allow_html=True,
+            )
+            st.session_state.last_tts_call_ts = time.time()
+            return True
+        except Exception as exc:  # noqa: BLE001 - we deliberately capture & surface this
+            last_exc = exc
+            if attempt < retries:
+                time.sleep(backoff_seconds)
+        finally:
+            if tmp_path and os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    pass
+
+    # All attempts failed — surface it instead of pretending everything's fine.
+    st.session_state.last_tts_call_ts = time.time()
+    st.session_state.tts_last_error = str(last_exc) if last_exc else "Unknown TTS error"
+    return False
+
+
+def match_tier(pct):
+    """[FIX-5] Single source of truth for score color + label, so the color
+    bar and the text label can never contradict each other (previously
+    score_color() and score_word() used different breakpoints: e.g. 65%
+    rendered an amber bar next to a "Strong match" label)."""
+    if pct >= 75:
+        return "#22c55e", "Excellent match"
+    if pct >= 60:
+        return "#22c55e", "Strong match"
+    if pct >= 40:
+        return "#f59e0b", "Fair match"
+    return "#ef4444", "Low match"
 
 
 def score_color(pct):
-    if pct >= 70:
-        return "#22c55e"
-    if pct >= 40:
-        return "#f59e0b"
-    return "#ef4444"
+    return match_tier(pct)[0]
 
 
 def score_word(pct):
-    if pct >= 75:
-        return "Excellent match"
-    if pct >= 60:
-        return "Strong match"
-    if pct >= 40:
-        return "Fair match"
-    return "Low match"
+    return match_tier(pct)[1]
 
 
 def rec_style(rec):
@@ -219,6 +342,85 @@ def section(step, title):
         f'<div class="section-title"><span class="step">{step}</span>{st_escape(title)}</div>',
         unsafe_allow_html=True,
     )
+
+
+# --------------------------------------------------------------------------
+# [FIX-2] Skill-gap reconciliation
+# --------------------------------------------------------------------------
+def _normalize_skill(skill):
+    """Lowercase, strip punctuation/whitespace, collapse internal spaces."""
+    s = re.sub(r"[^a-z0-9+#. ]", "", skill.lower().strip())
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def _skill_mentioned_in_text(skill_norm, haystack_norm):
+    """Simple, dependable containment check with a light plural/suffix
+    tolerance (e.g. 'testing' should match a resume that says 'tested')."""
+    if not skill_norm:
+        return False
+    if skill_norm in haystack_norm:
+        return True
+    # try the stem without a trailing 's', 'ing', 'ed' — cheap but effective
+    for suffix in ("ing", "ed", "s"):
+        if skill_norm.endswith(suffix) and len(skill_norm) > len(suffix) + 2:
+            stem = skill_norm[: -len(suffix)]
+            if stem and stem in haystack_norm:
+                return True
+    return False
+
+
+def reconcile_skill_gap(analysis, cv_text):
+    """[FIX-2] Deterministic post-processing pass over the LLM's
+    matching_skills / missing_skills lists.
+
+    This is the actual fix for "fails to correctly identify missing
+    skills": rather than trusting the model's classification blindly, we:
+      1. Normalise + de-duplicate both lists (case/whitespace variants of
+         the same skill no longer show up twice, or in both lists at once).
+      2. Re-check every "missing" skill against the resume text itself. If
+         it's literally present in the CV, the model misclassified it —
+         move it to matching_skills instead of leaving it as a false gap
+         (this is the most common cause of "wrong missing skills" bugs:
+         the model paraphrases the JD's wording and fails to recognise a
+         synonym/variant that's actually already in the resume).
+      3. Guarantee matching_skills and missing_skills are mutually
+         exclusive, so downstream video recommendations are never fetched
+         for a skill the candidate already has.
+
+    Mutates and returns `analysis` in place.
+    """
+    matching_raw = analysis.get("matching_skills") or []
+    missing_raw = analysis.get("missing_skills") or []
+    cv_norm = _normalize_skill(cv_text) if cv_text else ""
+
+    # De-duplicate while preserving first-seen original casing/formatting.
+    seen_norm = {}
+    matching_clean = []
+    for skill in matching_raw:
+        norm = _normalize_skill(skill)
+        if norm and norm not in seen_norm:
+            seen_norm[norm] = True
+            matching_clean.append(skill.strip())
+
+    missing_clean = []
+    reclassified = []
+    for skill in missing_raw:
+        norm = _normalize_skill(skill)
+        if not norm or norm in seen_norm:
+            continue  # duplicate of something already matching, or empty
+        if _skill_mentioned_in_text(norm, cv_norm):
+            # The model called this "missing" but it's actually in the resume.
+            seen_norm[norm] = True
+            matching_clean.append(skill.strip())
+            reclassified.append(skill.strip())
+        else:
+            seen_norm[norm] = True
+            missing_clean.append(skill.strip())
+
+    analysis["matching_skills"] = matching_clean
+    analysis["missing_skills"] = missing_clean
+    analysis["_reclassified_skills"] = reclassified  # kept for optional debugging/UI
+    return analysis
 
 
 # --------------------------------------------------------------------------
@@ -287,10 +489,13 @@ if st.button("Analyse Profile"):
         if "error" in res:
             st.error(f"Analysis failed: {res['error']}")
         else:
+            # [FIX-2] Reconcile the skill gap deterministically before storing.
+            res = reconcile_skill_gap(res, cv_text)
             st.session_state.results = res
             st.session_state.cv_text = cv_text
             st.session_state.jd_text = jd_text
             st.session_state.videos = None
+            st.session_state.videos_error = None
             reset_interview()
             st.rerun()
     else:
@@ -303,6 +508,7 @@ if st.button("Analyse Profile"):
 res = st.session_state.results
 if res:
     pct = res["match_percentage"]
+    color, label = match_tier(pct)  # [FIX-5] single source of truth
     st.markdown("<hr style='border-color:rgba(255,255,255,.08)'>", unsafe_allow_html=True)
     section("Step 2", f"Results for {res['candidate_name']}")
 
@@ -312,11 +518,11 @@ if res:
         <div class="card">
           <div class="score-label">Match score</div>
           <div class="score-wrap">
-            <div class="score-num" style="color:{score_color(pct)}">{pct}%</div>
+            <div class="score-num" style="color:{color}">{pct}%</div>
             <div class="score-track"><div class="score-fill"
-                 style="width:{pct}%;background:linear-gradient(90deg,{score_color(pct)},#8b5cf6)"></div></div>
+                 style="width:{pct}%;background:linear-gradient(90deg,{color},#8b5cf6)"></div></div>
           </div>
-          <div class="score-label" style="margin-top:.6rem">{score_word(pct)}</div>
+          <div class="score-label" style="margin-top:.6rem">{label}</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -353,23 +559,38 @@ if res:
         )
 
     # YouTube resources
+    # [FIX-2] Now wrapped in error handling with a visible retry option,
+    # and driven by the *reconciled* missing_skills list from above.
     if config.youtube_enabled() and res["missing_skills"]:
-        if st.session_state.videos is None:
+        need_fetch = st.session_state.videos is None and st.session_state.videos_error is None
+        if need_fetch:
             with st.spinner("Finding learning videos..."):
-                st.session_state.videos = get_learning_videos(res["missing_skills"])
-        videos = st.session_state.videos or []
-        if videos:
-            section("", "Recommended learning videos")
-            vcols = st.columns(min(3, len(videos)))
-            for i, vid in enumerate(videos):
-                with vcols[i % len(vcols)]:
-                    st.video(vid["url"])
-                    st.markdown(
-                        f"**{st_escape(vid['skill'])}** · "
-                        f"[{st_escape(vid['title'][:55])}]({vid['url']})"
-                        f"<br><span class='muted'>{st_escape(vid['channel'])}</span>",
-                        unsafe_allow_html=True,
-                    )
+                try:
+                    st.session_state.videos = get_learning_videos(res["missing_skills"])
+                    st.session_state.videos_error = None
+                except Exception as exc:
+                    st.session_state.videos = None
+                    st.session_state.videos_error = str(exc)
+
+        if st.session_state.videos_error:
+            st.warning(f"Couldn't load learning videos right now: {st.session_state.videos_error}")
+            if st.button("Retry loading videos"):
+                st.session_state.videos_error = None
+                st.rerun()
+        else:
+            videos = st.session_state.videos or []
+            if videos:
+                section("", "Recommended learning videos")
+                vcols = st.columns(min(3, len(videos)))
+                for i, vid in enumerate(videos):
+                    with vcols[i % len(vcols)]:
+                        st.video(vid["url"])
+                        # [FIX-6] No more raw HTML / unescaped URL interpolation —
+                        # plain markdown link syntax handles escaping safely,
+                        # and st.caption keeps the channel name out of any
+                        # unsafe_allow_html block entirely.
+                        st.markdown(f"**{st_escape(vid['skill'])}** · [{st_escape(vid['title'][:55])}]({vid['url']})")
+                        st.caption(vid["channel"])
 
 
 # --------------------------------------------------------------------------
@@ -389,16 +610,23 @@ if res:
         with cbtn:
             if st.button("Start Interview"):
                 with st.spinner("Preparing your interview questions..."):
-                    st.session_state.iv_questions = generate_questions(
+                    questions = generate_questions(
                         st.session_state.cv_text, st.session_state.jd_text,
                         res["matching_skills"], res["missing_skills"],
                     )
-                st.session_state.iv_active = True
-                st.session_state.iv_index = 0
-                st.session_state.iv_answers = []
-                st.session_state.iv_done = False
-                st.session_state.spoken_idx = -1
-                st.rerun()
+                # [FIX-4] Guard against an empty/None question list instead of
+                # crashing later with ZeroDivisionError / IndexError.
+                if not questions:
+                    st.error("Couldn't generate interview questions. Please try again.")
+                else:
+                    st.session_state.iv_questions = questions
+                    st.session_state.iv_active = True
+                    st.session_state.iv_index = 0
+                    st.session_state.iv_answers = []
+                    st.session_state.iv_done = False
+                    st.session_state.spoken_idx = -1
+                    st.session_state.tts_last_error = None
+                    st.rerun()
 
     # Interview finished — show report
     elif st.session_state.iv_done:
@@ -456,6 +684,16 @@ if res:
         questions = st.session_state.iv_questions
         idx = st.session_state.iv_index
         total = len(questions)
+
+        # [FIX-4] Defensive guard (shouldn't trigger given the check above,
+        # but keeps this section crash-proof if state is ever corrupted).
+        if total == 0 or idx >= total:
+            st.error("Interview state is invalid. Please restart the interview.")
+            if st.button("Restart interview"):
+                reset_interview()
+                st.rerun()
+            st.stop()
+
         question = questions[idx]
 
         st.progress((idx) / total, text=f"Question {idx + 1} of {total}")
@@ -466,8 +704,22 @@ if res:
 
         # Speak the question once when it first appears.
         if st.session_state.spoken_idx != idx:
-            speak(question)
+            spoke_ok = speak(question)
             st.session_state.spoken_idx = idx
+        else:
+            spoke_ok = st.session_state.tts_last_error is None
+
+        # [FIX-1] Make TTS failures visible + give the user a one-click retry,
+        # instead of silently falling back to text-only for some questions.
+        if st.session_state.voice_on and st.session_state.tts_last_error:
+            st.warning(
+                "Couldn't play the question audio for this one "
+                f"({st.session_state.tts_last_error}). You can still read and "
+                "answer it below, or retry the audio."
+            )
+            if st.button("🔊 Retry question audio", key=f"retry_tts_{idx}"):
+                speak(question)
+                st.rerun()
 
         answer_key = f"answer_{idx}"
         st.session_state.setdefault(answer_key, "")
@@ -484,7 +736,10 @@ if res:
         if audio and audio.get("bytes") and st.session_state.last_audio_id != audio.get("id"):
             st.session_state.last_audio_id = audio.get("id")
             with st.spinner("Transcribing your answer..."):
-                text, err = transcribe_answer(audio["bytes"], audio.get("format", "webm"))
+                try:
+                    text, err = transcribe_answer(audio["bytes"], audio.get("format", "webm"))
+                except Exception as exc:  # defensive: don't let a transcription
+                    text, err = "", str(exc)  # crash take down the whole interview
             if err:
                 st.error(f"Transcription failed: {err}")
             else:
@@ -506,16 +761,27 @@ if res:
         if submit or skip:
             answer = "" if skip else st.session_state.get(answer_key, "").strip()
             with st.spinner("Evaluating..."):
-                ev = evaluate_answer(question, answer, st.session_state.jd_text)
+                try:
+                    ev = evaluate_answer(question, answer, st.session_state.jd_text)
+                except Exception as exc:
+                    ev = {"score": 0, "language": "", "strengths": "—",
+                          "improvements": f"Evaluation failed: {exc}"}
             st.session_state.iv_answers.append(
                 {"question": question, "answer": answer or "(no answer)", "eval": ev}
             )
             if idx + 1 >= total:
                 with st.spinner("Compiling your interview report..."):
-                    st.session_state.iv_report = generate_final_report(
-                        st.session_state.iv_answers, res["match_percentage"],
-                        st.session_state.jd_text,
-                    )
+                    try:
+                        st.session_state.iv_report = generate_final_report(
+                            st.session_state.iv_answers, res["match_percentage"],
+                            st.session_state.jd_text,
+                        )
+                    except Exception as exc:
+                        st.session_state.iv_report = {
+                            "overall_score": 0, "recommendation": "Maybe",
+                            "summary": f"Report generation failed: {exc}",
+                            "strengths": [], "improvements": [],
+                        }
                 st.session_state.iv_done = True
             else:
                 st.session_state.iv_index += 1

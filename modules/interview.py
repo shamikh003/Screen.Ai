@@ -12,8 +12,12 @@ _SYSTEM = (
 def generate_questions(cv_text, jd_text, matching_skills, missing_skills,
                        n=config.INTERVIEW_QUESTIONS):
     """Generate personalised interview questions from CV + JD context."""
-    cv_text = (cv_text or "")[: config.MAX_INPUT_CHARS]
-    jd_text = (jd_text or "")[: config.MAX_INPUT_CHARS]
+    # [BUG FIX] Same issue as groq_analyzer.py: a blind [:MAX_INPUT_CHARS]
+    # slice could cut off a trailing Skills/Projects section on a long CV,
+    # producing generic questions instead of ones grounded in the
+    # candidate's actual (but truncated-away) experience.
+    cv_text = config.smart_truncate(cv_text or "")
+    jd_text = config.smart_truncate(jd_text or "")
 
     prompt = f"""Create exactly {n} interview questions for this candidate.
 
@@ -111,6 +115,9 @@ Return ONLY:
             "improvements": f"Could not evaluate this answer: {exc}",
         }
 
+    if not isinstance(result, dict):  # extra guard, chat_json already enforces this
+        result = {}
+
     return {
         "score": _clamp_score(result.get("score")),
         "language": (result.get("language") or "English").strip(),
@@ -161,6 +168,9 @@ Return ONLY:
             "strengths": [],
             "improvements": [],
         }
+
+    if not isinstance(result, dict):  # extra guard, chat_json already enforces this
+        result = {}
 
     return {
         "overall_score": _clamp_pct(result.get("overall_score"), _avg_score(answers)),

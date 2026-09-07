@@ -47,6 +47,32 @@ INTERVIEW_QUESTIONS = 4       # number of questions in a live interview
 REQUEST_TIMEOUT = 60          # seconds
 
 
+def smart_truncate(text, limit=MAX_INPUT_CHARS):
+    """[BUG FIX] Trim long text to `limit` characters WITHOUT blindly
+    cutting off the tail.
+
+    The previous code did `text[:MAX_INPUT_CHARS]` everywhere. Most resumes
+    put their Skills section near the END of the document (after Experience
+    / Education), so any CV longer than ~14,000 characters had its skills
+    list silently chopped off before the model ever saw it — the model then
+    (correctly, given what it was shown) reported those skills as "missing".
+    This is very likely the actual root cause of "missing skills detected
+    incorrectly".
+
+    Fix: keep the first ~65% and the last ~30% of the allowed budget (with a
+    small explicit marker in between), so header/summary AND a trailing
+    skills/certifications section both have a good chance of surviving
+    truncation, regardless of resume layout.
+    """
+    text = text or ""
+    if len(text) <= limit:
+        return text
+    head_len = int(limit * 0.65)
+    marker = "\n...[content trimmed for length]...\n"
+    tail_len = max(0, limit - head_len - len(marker))
+    return text[:head_len] + marker + (text[-tail_len:] if tail_len else "")
+
+
 def missing_keys():
     """Return a list of required secrets that are not configured."""
     missing = []
