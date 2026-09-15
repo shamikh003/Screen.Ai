@@ -89,19 +89,28 @@ html, body, [class*="css"], .stMarkdown, .stTextArea, .stButton {
         radial-gradient(1000px 500px at 100% 0%, rgba(6,182,212,.14), transparent 55%),
         #0b0b17;
 }
-.block-container { padding-top: 2.2rem; max-width: 1180px; }
+*::-webkit-scrollbar {
+    display: none !important;
+    width: 0px !important;
+    background: transparent !important;
+}
+* {
+    -ms-overflow-style: none !important;
+    scrollbar-width: none !important;
+}
+.block-container { padding-top: 0rem !important; padding-right: 1rem !important; max-width: 1180px; }
 
 /* Hero */
-.hero { text-align:center; margin: 0 0 1.2rem; }
+.hero { text-align:center; margin: 0 0 .6rem; }
 .hero h1 {
-    font-size: 2.9rem; font-weight: 800; margin: 0; line-height: 1.1;
+    font-size: 2.1rem; font-weight: 800; margin: 0; line-height: 1.1;
     background: linear-gradient(120deg,#a78bfa 0%,#8b5cf6 35%,#06b6d4 100%);
     -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
 }
-.hero p { color:#a5a5c0; font-size:1.05rem; margin:.5rem 0 0; }
-.pill-row { display:flex; gap:.5rem; justify-content:center; flex-wrap:wrap; margin-top:1rem; }
-.pill { font-size:.78rem; color:#c4b5fd; background:rgba(139,92,246,.12);
-        border:1px solid rgba(139,92,246,.35); padding:.32rem .8rem; border-radius:999px; }
+.hero p { color:#a5a5c0; font-size:.92rem; margin:.3rem 0 0; }
+.pill-row { display:flex; gap:.4rem; justify-content:center; flex-wrap:wrap; margin-top:.6rem; }
+.pill { font-size:.72rem; color:#c4b5fd; background:rgba(139,92,246,.12);
+        border:1px solid rgba(139,92,246,.35); padding:.22rem .65rem; border-radius:999px; }
 
 /* Glass cards */
 .card {
@@ -110,9 +119,9 @@ html, body, [class*="css"], .stMarkdown, .stTextArea, .stButton {
     border-radius: 16px; padding: 1.3rem 1.4rem; margin-bottom: 1rem;
     backdrop-filter: blur(8px); box-shadow: 0 8px 30px rgba(0,0,0,.25);
 }
-.section-title { font-size:1.05rem; font-weight:700; color:#e9e9f5; margin:0 0 .2rem; }
+.section-title { font-size:1rem; font-weight:700; color:#e9e9f5; margin:0 0 .15rem; }
 .section-title .step { color:#8b5cf6; font-weight:800; margin-right:.5rem; }
-.section-sub  { font-size:.85rem; color:#9494b0; margin:0 0 1rem; }
+.section-sub  { font-size:.82rem; color:#9494b0; margin:0 0 .6rem; }
 
 /* Score */
 .score-wrap { display:flex; align-items:center; gap:1.2rem; }
@@ -152,7 +161,105 @@ html, body, [class*="css"], .stMarkdown, .stTextArea, .stButton {
     transition: transform .15s ease, box-shadow .15s ease;
 }
 .stButton>button:hover { transform: translateY(-1px); box-shadow:0 8px 22px rgba(139,92,246,.35); }
-#MainMenu, footer, header { visibility:hidden; }
+#MainMenu, footer, header { visibility:hidden; height: 0px; }
+
+/* --------------------------------------------------
+   BULLETPROOF EQUAL HEIGHT FOR STEP 1 CARDS
+-------------------------------------------------- */
+/* Force Columns to Stretch */
+div[data-testid="stHorizontalBlock"] { 
+    align-items: stretch !important; 
+}
+div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] { 
+    display: flex !important; 
+    flex-direction: column !important; 
+}
+/* Force the wrapper container to take 100% height */
+div[data-testid="stColumn"] > div.element-container {
+    flex: 1 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    height: 100% !important;
+}
+/* Force the Border Container to fill the column */
+div[data-testid="stVerticalBlockBorderWrapper"] {
+    flex: 1 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    height: 100% !important;
+    border-color: rgba(139,92,246,.22) !important;
+    background: rgba(255,255,255,.02) !important;
+    border-radius: 14px !important;
+}
+div[data-testid="stVerticalBlockBorderWrapper"] > div {
+    flex: 1 !important; 
+    display: flex !important; 
+    flex-direction: column !important; 
+    height: 100% !important;
+    padding: .85rem 1rem !important;
+}
+
+/* --------------------------------------------------
+   DASHED BORDER FOR BOTH CV UPLOAD & JD TEXTAREA
+-------------------------------------------------- */
+[data-testid="stFileUploaderDropzone"], [data-testid="stFileUploader"] section,
+[data-testid="stTextArea"] > div > div {
+    background: rgba(139,92,246,.04) !important;
+    border: 1px dashed rgba(139,92,246,.4) !important;
+    border-radius: 12px !important;
+    transition: border-color .15s ease, background .15s ease;
+}
+[data-testid="stFileUploaderDropzone"]:hover, [data-testid="stFileUploader"] section:hover,
+[data-testid="stTextArea"] > div > div:focus-within, 
+[data-testid="stTextArea"] > div > div:hover {
+    border-color: rgba(139,92,246,.75) !important;
+    background: rgba(139,92,246,.08) !important;
+}
+
+/* --------------------------------------------------
+   CV BOX & JD BOX KI HEIGHT HAMESHA BARABAR RAHE
+   (fixed card height, chahe andar content kuch bhi ho)
+-------------------------------------------------- */
+div[data-testid="stVerticalBlockBorderWrapper"] > div {
+    height: 300px !important;
+}
+[data-testid="stFileUploaderDropzone"] {
+    flex: 1 !important;
+}
+[data-testid="stTextArea"] {
+    flex: 1 !important;
+    display: flex !important;
+    flex-direction: column !important;
+}
+[data-testid="stTextArea"] > div {
+    flex: 1 !important;
+    display: flex !important;
+}
+[data-testid="stTextArea"] > div > div {
+    flex: 1 !important;
+    display: flex !important;
+}
+[data-testid="stTextArea"] textarea {
+    flex: 1 !important;
+    height: 100% !important;
+}
+
+/* Specifically style the primary Analyse Profile button */
+button[kind="primary"] {
+    background: linear-gradient(135deg, #8b5cf6, #06b6d4) !important;
+    color: white !important;
+    font-size: 1.5rem !important;
+    font-weight: 800 !important;
+    height: 3.5rem !important;
+    border-radius: 14px !important;
+    letter-spacing: .02em;
+    border: none !important;
+    transition: transform .15s ease, box-shadow .15s ease;
+}
+button[kind="primary"]:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(139,92,246,.4);
+}
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
@@ -222,33 +329,7 @@ def reset_interview():
 # Helpers
 # --------------------------------------------------------------------------
 def speak(text, retries=2, backoff_seconds=1.5):
-    """Autoplay text as speech.
-
-    [FIX-1] Previously any exception here (network blip / rate limit / locked
-    temp file, etc.) was caught and silently discarded, which is exactly why
-    question 1 could play audio while questions 2/3 silently degraded to
-    text-only with no visible error. Now we:
-      - retry a couple of times before giving up (transient errors are
-        common with gTTS's HTTP backend)
-      - use a real temp file via `tempfile` (no working-directory
-        collisions / permission issues)
-      - record the failure reason in session_state so the UI can show it
-        and offer a manual retry, instead of failing invisibly.
-
-    [FIX-8] gTTS talks to Google Translate's undocumented TTS endpoint,
-    which throttles/blocks requests that arrive too close together in time.
-    Confirmed via real testing: skipping through questions rapidly (no
-    delay between speak() calls) reliably lost audio after question 1,
-    while typing+submitting an answer (which naturally inserts a 1-3s delay
-    for the Groq evaluation call) let every question's audio play fine.
-    Same code path, only difference was timing between consecutive gTTS
-    calls. Fix: unconditionally enforce a minimum gap (MIN_TTS_GAP seconds)
-    since the last gTTS call, sleeping first if the user proceeds faster
-    than that — so audio no longer silently depends on how fast the person
-    clicks through the interview.
-
-    Returns True if audio was played, False otherwise.
-    """
+    """Autoplay text as speech."""
     MIN_TTS_GAP = 2.0  # seconds; below this, Google's TTS endpoint tends to throttle
 
     st.session_state.tts_last_error = None
@@ -293,10 +374,6 @@ def speak(text, retries=2, backoff_seconds=1.5):
 
 
 def match_tier(pct):
-    """[FIX-5] Single source of truth for score color + label, so the color
-    bar and the text label can never contradict each other (previously
-    score_color() and score_word() used different breakpoints: e.g. 65%
-    rendered an amber bar next to a "Strong match" label)."""
     if pct >= 75:
         return "#22c55e", "Excellent match"
     if pct >= 60:
@@ -339,7 +416,7 @@ def st_escape(text):
 
 def section(step, title):
     st.markdown(
-        f'<div class="section-title"><span class="step">{step}</span>{st_escape(title)}</div>',
+        f'<div class="section-title"><span class="step-badge">{step}</span>{st_escape(title)}</div>',
         unsafe_allow_html=True,
     )
 
@@ -348,19 +425,15 @@ def section(step, title):
 # [FIX-2] Skill-gap reconciliation
 # --------------------------------------------------------------------------
 def _normalize_skill(skill):
-    """Lowercase, strip punctuation/whitespace, collapse internal spaces."""
     s = re.sub(r"[^a-z0-9+#. ]", "", skill.lower().strip())
     return re.sub(r"\s+", " ", s).strip()
 
 
 def _skill_mentioned_in_text(skill_norm, haystack_norm):
-    """Simple, dependable containment check with a light plural/suffix
-    tolerance (e.g. 'testing' should match a resume that says 'tested')."""
     if not skill_norm:
         return False
     if skill_norm in haystack_norm:
         return True
-    # try the stem without a trailing 's', 'ing', 'ed' — cheap but effective
     for suffix in ("ing", "ed", "s"):
         if skill_norm.endswith(suffix) and len(skill_norm) > len(suffix) + 2:
             stem = skill_norm[: -len(suffix)]
@@ -370,30 +443,10 @@ def _skill_mentioned_in_text(skill_norm, haystack_norm):
 
 
 def reconcile_skill_gap(analysis, cv_text):
-    """[FIX-2] Deterministic post-processing pass over the LLM's
-    matching_skills / missing_skills lists.
-
-    This is the actual fix for "fails to correctly identify missing
-    skills": rather than trusting the model's classification blindly, we:
-      1. Normalise + de-duplicate both lists (case/whitespace variants of
-         the same skill no longer show up twice, or in both lists at once).
-      2. Re-check every "missing" skill against the resume text itself. If
-         it's literally present in the CV, the model misclassified it —
-         move it to matching_skills instead of leaving it as a false gap
-         (this is the most common cause of "wrong missing skills" bugs:
-         the model paraphrases the JD's wording and fails to recognise a
-         synonym/variant that's actually already in the resume).
-      3. Guarantee matching_skills and missing_skills are mutually
-         exclusive, so downstream video recommendations are never fetched
-         for a skill the candidate already has.
-
-    Mutates and returns `analysis` in place.
-    """
     matching_raw = analysis.get("matching_skills") or []
     missing_raw = analysis.get("missing_skills") or []
     cv_norm = _normalize_skill(cv_text) if cv_text else ""
 
-    # De-duplicate while preserving first-seen original casing/formatting.
     seen_norm = {}
     matching_clean = []
     for skill in matching_raw:
@@ -407,9 +460,8 @@ def reconcile_skill_gap(analysis, cv_text):
     for skill in missing_raw:
         norm = _normalize_skill(skill)
         if not norm or norm in seen_norm:
-            continue  # duplicate of something already matching, or empty
+            continue  
         if _skill_mentioned_in_text(norm, cv_norm):
-            # The model called this "missing" but it's actually in the resume.
             seen_norm[norm] = True
             matching_clean.append(skill.strip())
             reclassified.append(skill.strip())
@@ -419,7 +471,7 @@ def reconcile_skill_gap(analysis, cv_text):
 
     analysis["matching_skills"] = matching_clean
     analysis["missing_skills"] = missing_clean
-    analysis["_reclassified_skills"] = reclassified  # kept for optional debugging/UI
+    analysis["_reclassified_skills"] = reclassified  
     return analysis
 
 
@@ -430,7 +482,7 @@ st.markdown(
     """
     <div class="hero">
       <h1>Screen.ai</h1>
-      <p>AI-powered resume screening &amp; live voice interview — for <b>any</b> job, any field.</p>
+      <p>AI-powered resume screening &amp; live voice interview for <b>any</b> job, any field.</p>
       <div class="pill-row">
         <span class="pill">Smart match scoring</span>
         <span class="pill">Learning roadmap</span>
@@ -458,38 +510,61 @@ if not config.youtube_enabled():
 # --------------------------------------------------------------------------
 # Step 1 — Input
 # --------------------------------------------------------------------------
-section("Step 1", "Provide the resume & job")
-st.markdown('<div class="section-sub">Upload a PDF resume and paste the target job description.</div>',
-            unsafe_allow_html=True)
+# YAHAN GHATLI THEEK KAR DI GAYI HAI (span tag wapas aa gaya hai)
+st.markdown(
+    '<div class="section-title">Provide your resume &amp; target job</div>'
+    '<div class="section-sub">Upload your resume and paste the job description.</div>',
+    unsafe_allow_html=True,
+)
 
 col1, col2 = st.columns(2)
 with col1:
-    uploaded = st.file_uploader("Resume (PDF)", type=["pdf"], label_visibility="collapsed")
-    cv_text = ""
-    if uploaded:
-        try:
-            reader = PdfReader(uploaded)
-            cv_text = "".join((page.extract_text() or "") for page in reader.pages)
-            if cv_text.strip():
-                st.success(f"Resume loaded ({len(cv_text):,} characters extracted).")
-            else:
-                st.warning("Could not extract text — is this a scanned/image PDF?")
-        except Exception as exc:
-            st.error(f"Error reading PDF: {exc}")
+    with st.container(border=True):
+        st.markdown(
+            
+            '<div><p class="input-card-title">Upload Resume</p>'
+            '<p class="input-card-sub">PDF only • Max 10MB</p></div></div>',
+            unsafe_allow_html=True,
+        )
+        uploaded = st.file_uploader("Resume (PDF)", type=["pdf"], label_visibility="collapsed")
+        cv_text = ""
+        if uploaded:
+            try:
+                reader = PdfReader(uploaded)
+                cv_text = "".join((page.extract_text() or "") for page in reader.pages)
+                if cv_text.strip():
+                    st.markdown(f'<p style="color:#86efac; font-size:0.85rem; margin: -0.5rem 0 0 0;"> Resume loaded ({len(cv_text):,} characters).</p>', unsafe_allow_html=True)
+                else:
+                    st.markdown('<p style="color:#fcd34d; font-size:0.85rem; margin: -0.5rem 0 0 0;"> Could not extract text — scanned PDF?</p>', unsafe_allow_html=True)
+            except Exception as exc:
+                st.markdown(f'<p style="color:#fca5a5; font-size:0.85rem; margin: -0.5rem 0 0 0;"> Error reading PDF.</p>', unsafe_allow_html=True)
 with col2:
-    jd_text = st.text_area(
-        "Job description", height=180, label_visibility="collapsed",
-        placeholder="Paste the target job description here (any field)...",
-    )
+    with st.container(border=True):
+        st.markdown(
+            
+            '<div><p class="input-card-title">Job Description</p>'
+            '<p class="input-card-sub">Paste the target job description here (any field)...</p></div></div>',
+            unsafe_allow_html=True,
+        )
+        # HEIGHT CV BOX KE BARABAR — ab CSS (fixed card height) control karti hai
+        jd_text = st.text_area(
+            "Job description", height=68, label_visibility="collapsed",
+            placeholder="Start typing...",
+        )
+        st.markdown(f'<div class="char-count">{len(jd_text):,}/10000</div>', unsafe_allow_html=True)
 
-if st.button("Analyse Profile"):
+st.write("") 
+_, btn_col, _ = st.columns([1, 1.5, 1]) 
+with btn_col:
+    analyse_clicked = st.button("Analyse Profile", use_container_width=True, type="primary")
+
+if analyse_clicked:
     if cv_text.strip() and jd_text.strip():
         with st.spinner("Analysing profile alignment with Groq..."):
             res = analyze_profile(cv_text, jd_text)
         if "error" in res:
             st.error(f"Analysis failed: {res['error']}")
         else:
-            # [FIX-2] Reconcile the skill gap deterministically before storing.
             res = reconcile_skill_gap(res, cv_text)
             st.session_state.results = res
             st.session_state.cv_text = cv_text
@@ -508,7 +583,7 @@ if st.button("Analyse Profile"):
 res = st.session_state.results
 if res:
     pct = res["match_percentage"]
-    color, label = match_tier(pct)  # [FIX-5] single source of truth
+    color, label = match_tier(pct)  
     st.markdown("<hr style='border-color:rgba(255,255,255,.08)'>", unsafe_allow_html=True)
     section("Step 2", f"Results for {res['candidate_name']}")
 
@@ -559,8 +634,6 @@ if res:
         )
 
     # YouTube resources
-    # [FIX-2] Now wrapped in error handling with a visible retry option,
-    # and driven by the *reconciled* missing_skills list from above.
     if config.youtube_enabled() and res["missing_skills"]:
         need_fetch = st.session_state.videos is None and st.session_state.videos_error is None
         if need_fetch:
@@ -585,10 +658,6 @@ if res:
                 for i, vid in enumerate(videos):
                     with vcols[i % len(vcols)]:
                         st.video(vid["url"])
-                        # [FIX-6] No more raw HTML / unescaped URL interpolation —
-                        # plain markdown link syntax handles escaping safely,
-                        # and st.caption keeps the channel name out of any
-                        # unsafe_allow_html block entirely.
                         st.markdown(f"**{st_escape(vid['skill'])}** · [{st_escape(vid['title'][:55])}]({vid['url']})")
                         st.caption(vid["channel"])
 
@@ -602,20 +671,16 @@ if res:
     st.markdown('<div class="section-sub">Personalised questions from your CV &amp; JD. '
                 'Answer by voice or text — in English or Urdu.</div>', unsafe_allow_html=True)
 
-    # Not started yet
+   # Not started yet
     if not st.session_state.iv_active:
-        cset, cbtn = st.columns([1, 2])
-        with cset:
-            st.session_state.voice_on = st.toggle("Voice questions", value=st.session_state.voice_on)
-        with cbtn:
-            if st.button("Start Interview"):
-                with st.spinner("Preparing your interview questions..."):
-                    questions = generate_questions(
-                        st.session_state.cv_text, st.session_state.jd_text,
-                        res["matching_skills"], res["missing_skills"],
-                    )
-                # [FIX-4] Guard against an empty/None question list instead of
-                # crashing later with ZeroDivisionError / IndexError.
+        st.session_state.voice_on = st.toggle("Voice questions", value=st.session_state.voice_on)
+        
+        st.write("")
+        st.write("")
+        
+        _, start_btn_col, _ = st.columns([1, 1.5, 1])
+        with start_btn_col:
+            if st.button("Start Interview", use_container_width=True, type="primary"):
                 if not questions:
                     st.error("Couldn't generate interview questions. Please try again.")
                 else:
@@ -685,8 +750,6 @@ if res:
         idx = st.session_state.iv_index
         total = len(questions)
 
-        # [FIX-4] Defensive guard (shouldn't trigger given the check above,
-        # but keeps this section crash-proof if state is ever corrupted).
         if total == 0 or idx >= total:
             st.error("Interview state is invalid. Please restart the interview.")
             if st.button("Restart interview"):
@@ -702,15 +765,12 @@ if res:
             unsafe_allow_html=True,
         )
 
-        # Speak the question once when it first appears.
         if st.session_state.spoken_idx != idx:
             spoke_ok = speak(question)
             st.session_state.spoken_idx = idx
         else:
             spoke_ok = st.session_state.tts_last_error is None
 
-        # [FIX-1] Make TTS failures visible + give the user a one-click retry,
-        # instead of silently falling back to text-only for some questions.
         if st.session_state.voice_on and st.session_state.tts_last_error:
             st.warning(
                 "Couldn't play the question audio for this one "
@@ -732,14 +792,13 @@ if res:
                 just_once=False, key=f"mic_{idx}",
             )
 
-        # New recording -> transcribe into the editable answer box.
         if audio and audio.get("bytes") and st.session_state.last_audio_id != audio.get("id"):
             st.session_state.last_audio_id = audio.get("id")
             with st.spinner("Transcribing your answer..."):
                 try:
                     text, err = transcribe_answer(audio["bytes"], audio.get("format", "webm"))
-                except Exception as exc:  # defensive: don't let a transcription
-                    text, err = "", str(exc)  # crash take down the whole interview
+                except Exception as exc: 
+                    text, err = "", str(exc)
             if err:
                 st.error(f"Transcription failed: {err}")
             else:
