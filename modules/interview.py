@@ -12,17 +12,15 @@ _SYSTEM = (
 def generate_questions(cv_text, jd_text, matching_skills, missing_skills,
                        n=config.INTERVIEW_QUESTIONS):
     """Generate personalised interview questions from CV + JD context."""
-    # [BUG FIX] Same issue as groq_analyzer.py: a blind [:MAX_INPUT_CHARS]
-    # slice could cut off a trailing Skills/Projects section on a long CV,
-    # producing generic questions instead of ones grounded in the
-    # candidate's actual (but truncated-away) experience.
+    # Same truncation strategy as groq_analyzer.py, keeps head and tail
+    # instead of blindly cutting off a trailing Skills/Projects section.
     cv_text = config.smart_truncate(cv_text or "")
     jd_text = config.smart_truncate(jd_text or "")
 
     prompt = f"""Create exactly {n} interview questions for this candidate.
 
 RULES:
-- Base questions ONLY on the CV and JD context below — no generic filler.
+- Base questions ONLY on the CV and JD context below, no generic filler.
 - Progress from a warm-up to deeper, role-specific and scenario questions.
 - Each question must be a single, clear sentence.
 - Keep them answerable by voice in under a minute.
@@ -79,7 +77,7 @@ def evaluate_answer(question, answer_text, jd_text):
         return {
             "score": 1,
             "language": "English",
-            "strengths": "—",
+            "strengths": "-",
             "improvements": "No answer was provided. Please respond to the question.",
         }
 
@@ -111,7 +109,7 @@ Return ONLY:
         return {
             "score": 0,
             "language": "English",
-            "strengths": "—",
+            "strengths": "-",
             "improvements": f"Could not evaluate this answer: {exc}",
         }
 
@@ -121,8 +119,8 @@ Return ONLY:
     return {
         "score": _clamp_score(result.get("score")),
         "language": (result.get("language") or "English").strip(),
-        "strengths": (result.get("strengths") or "—").strip(),
-        "improvements": (result.get("improvements") or "—").strip(),
+        "strengths": (result.get("strengths") or "-").strip(),
+        "improvements": (result.get("improvements") or "-").strip(),
     }
 
 

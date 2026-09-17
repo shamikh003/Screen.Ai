@@ -51,13 +51,10 @@ def _extract_json(text):
 
 
 def _safe_response_json(resp):
-    """[BUG FIX] `.json()` raises a raw ValueError/JSONDecodeError (NOT a
-    GroqError) if the server ever returns a non-JSON body — e.g. a gateway
-    timeout HTML page, or a truncated response during an outage. Previously
-    that raw exception was uncaught here, so it would propagate all the way
-    up as an unhandled crash instead of the clean {"error": "..."} the rest
-    of the app expects. Now it's always converted into a GroqError with
-    enough context (status code + a text snippet) to actually debug it."""
+    """`.json()` raises a raw ValueError/JSONDecodeError, not a GroqError,
+    if the server ever returns a non-JSON body (e.g. a gateway timeout
+    page during an outage). Convert it into a GroqError with enough
+    context (status code and a text snippet) to debug it."""
     try:
         return resp.json()
     except ValueError as exc:
@@ -95,13 +92,8 @@ def chat_json(messages, temperature=0.3, max_tokens=2500):
     except (KeyError, IndexError, TypeError) as exc:
         raise GroqError("Unexpected response shape from Groq.") from exc
 
-    # [BUG FIX] If the model's answer got cut off because max_tokens ran
-    # out mid-JSON (very possible on a long CV with many missing skills +
-    # a full roadmap), the previous code just tried to parse the truncated
-    # text and failed with an opaque "Model did not return valid JSON."
-    # This detects that specific case, automatically retries ONCE with a
-    # bigger budget, and only gives up with a clear message if that also
-    # fails — instead of silently producing an incomplete/empty analysis.
+    # If the response was cut off mid-JSON because max_tokens ran out,
+    # retry once with a bigger budget before giving up.
     if choice.get("finish_reason") == "length":
         bigger_budget = min(max_tokens * 2, 8000)
         if bigger_budget > max_tokens:
@@ -121,14 +113,8 @@ def chat_json(messages, temperature=0.3, max_tokens=2500):
                 )
 
     parsed = _extract_json(content)
-    # [BUG FIX] _extract_json() only guarantees valid JSON, not that it's an
-    # OBJECT. If the model ever emits a bare JSON list/string/number instead
-    # of the requested {...} shape, every caller (analyze_profile,
-    # generate_questions, evaluate_answer, generate_final_report) would
-    # crash with an uncaught AttributeError on `.get(...)`, since none of
-    # them catch anything but GroqError. Centralising the check here means
-    # every caller is protected at once instead of relying on each of them
-    # to re-check it individually.
+    # _extract_json() only guarantees valid JSON, not that it's an object.
+    # Every caller expects a dict, so this check is centralised here.
     if not isinstance(parsed, dict):
         raise GroqError("Model returned valid JSON but not the expected object shape.")
     return parsed

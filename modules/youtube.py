@@ -33,13 +33,9 @@ def get_learning_videos(skills, max_skills=6):
             continue
 
         if data.get("error"):
-            # [BUG FIX] Previously this was `break`, which aborted the
-            # ENTIRE loop on the first error — so if skill #1's search
-            # hiccuped, skills #2-6 never got looked up at all, even though
-            # their own requests would likely have succeeded. Now we only
-            # hard-stop for errors that won't get better on the next call
-            # (quota exhausted / bad key / permission denied); anything else
-            # just skips this one skill and keeps going.
+            # Only hard-stop for errors that won't improve on retry (quota
+            # exhausted, bad key, permission denied). Anything else just
+            # skips this one skill and continues with the rest.
             err = data["error"] or {}
             reasons = {
                 e.get("reason", "") for e in (err.get("errors") or [])

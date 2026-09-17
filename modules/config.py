@@ -22,7 +22,7 @@ def _get_secret(name):
     if val:
         return val.strip()
     # Streamlit Community Cloud exposes dashboard secrets via st.secrets,
-    # not as environment variables — guarded so local runs without a
+    # not as environment variables. Guarded so local runs without a
     # secrets.toml don't raise.
     try:
         import streamlit as st
@@ -48,21 +48,13 @@ REQUEST_TIMEOUT = 60          # seconds
 
 
 def smart_truncate(text, limit=MAX_INPUT_CHARS):
-    """[BUG FIX] Trim long text to `limit` characters WITHOUT blindly
-    cutting off the tail.
+    """Trim long text to `limit` characters without cutting off the tail.
 
-    The previous code did `text[:MAX_INPUT_CHARS]` everywhere. Most resumes
-    put their Skills section near the END of the document (after Experience
-    / Education), so any CV longer than ~14,000 characters had its skills
-    list silently chopped off before the model ever saw it — the model then
-    (correctly, given what it was shown) reported those skills as "missing".
-    This is very likely the actual root cause of "missing skills detected
-    incorrectly".
-
-    Fix: keep the first ~65% and the last ~30% of the allowed budget (with a
-    small explicit marker in between), so header/summary AND a trailing
-    skills/certifications section both have a good chance of surviving
-    truncation, regardless of resume layout.
+    Most resumes put their Skills section near the end of the document,
+    so a naive head-only truncation can drop it before the model ever
+    sees it. This keeps the first ~65% and last ~30% of the budget, with
+    a marker in between, so both the summary and a trailing skills
+    section survive truncation.
     """
     text = text or ""
     if len(text) <= limit:
@@ -82,5 +74,5 @@ def missing_keys():
 
 
 def youtube_enabled():
-    """YouTube resources are optional — only used when a key is present."""
+    """YouTube resources are optional, used only when a key is present."""
     return bool(YOUTUBE_API_KEY)
