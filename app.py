@@ -446,7 +446,7 @@ col1, col2 = st.columns(2)
 with col1:
     with st.container(border=True):
         st.markdown(
-            '<div class="input-card-header"><span class="input-card-icon">☁️</span>'
+            '<div class="input-card-header"><span class="input-card-icon"></span>'
             '<div><p class="input-card-title">Upload Resume</p>'
             '<p class="input-card-sub">PDF only • Max 10MB</p></div></div>',
             unsafe_allow_html=True,
@@ -468,7 +468,7 @@ with col1:
 with col2:
     with st.container(border=True):
         st.markdown(
-            '<div class="input-card-header"><span class="input-card-icon">📄</span>'
+            '<div class="input-card-header"><span class="input-card-icon"></span>'
             '<div><p class="input-card-title">Job Description</p>'
             '<p class="input-card-sub">Paste the target job description here (any field)...</p></div></div>',
             unsafe_allow_html=True,
@@ -719,7 +719,7 @@ if res:
                 f"({st.session_state.tts_last_error}). You can still read and "
                 "answer it below, or retry the audio."
             )
-            if st.button("🔊 Retry question audio", key=f"retry_tts_{idx}"):
+            if st.button("Retry question audio", key=f"retry_tts_{idx}"):
                 speak(question)
                 st.rerun()
 
